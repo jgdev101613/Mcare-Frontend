@@ -11,6 +11,7 @@ import { useAuth } from "../context/AuthContext";
 import {
   changePassword,
   fetchUserAttendance,
+  fetchUserDuties,
   updateProfileImage,
   updateUserInformation,
 } from "../api";
@@ -48,6 +49,7 @@ const Profile = () => {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
   const [attendance, setAttendance] = useState([]);
+  const [duties, setDuties] = useState([]);
 
   if (!user) {
     return (
@@ -71,7 +73,20 @@ const Profile = () => {
       }
     };
 
+    const fetchDuties = async () => {
+      try {
+        const { data } = await fetchUserDuties(user._id);
+        setDuties(data.records || []);
+      } catch (err) {
+        const message =
+          err.response?.data?.message ||
+          "Failed to fetch duties. Please try again.";
+        console.error(message);
+      }
+    };
+
     if (user?._id) {
+      fetchDuties();
       fetchAttendance();
     }
   }, []);
@@ -119,7 +134,7 @@ const Profile = () => {
     const margin = { top: 110, left: 40, right: 40, bottom: 60 };
 
     // generated timestamp for footer (bottom-left)
-    const generatedAt = new Date().toLocaleString("en-US", {
+    const generatedAt = new Date().toLocaleString("en-PH", {
       year: "numeric",
       month: "long",
       day: "numeric",
@@ -132,7 +147,7 @@ const Profile = () => {
     const tableColumn = ["#", "Date", "Time In"];
     const tableRows = records.map((record, i) => {
       const dateObj = new Date(record.date);
-      const formattedDate = dateObj.toLocaleDateString("en-US", {
+      const formattedDate = dateObj.toLocaleDateString("en-PH", {
         year: "numeric",
         month: "long",
         day: "numeric",
@@ -141,7 +156,7 @@ const Profile = () => {
       const [h, m, s] = (record.timeIn || "00:00:00").split(":").map(Number);
       const timeObj = new Date();
       timeObj.setHours(h, m, s || 0);
-      const formattedTime = timeObj.toLocaleTimeString("en-US", {
+      const formattedTime = timeObj.toLocaleTimeString("en-PH", {
         hour: "numeric",
         minute: "2-digit",
         hour12: true,
@@ -249,6 +264,12 @@ const Profile = () => {
     // finally save
     doc.save(`${user?.username || "attendance"}_attendance.pdf`);
   };
+
+  const handleGenerateDutiesPDF = async () => {
+    if (duties.length === 0)
+      return showErrorToast("You don't have duties yet.");
+  };
+
   // Handle profile info update
   const handleSaveInfo = async () => {
     try {
@@ -496,13 +517,25 @@ const Profile = () => {
         </div>
       )}
 
-      <button
-        onClick={handleGenerateAttendancePDF}
-        className="flex items-center justify-center w-full gap-2 px-4 py-2 mt-4 text-white bg-blue-600 rounded-lg hover:bg-blue-700"
-      >
-        <Download size={16} />
-        Download Attendance PDF
-      </button>
+      {user.role !== "admin" && (
+        <div className="flex flex-col">
+          <p className="mt-5 font-semibold text-center text-md">Data Reports</p>
+          <button
+            onClick={handleGenerateAttendancePDF}
+            className="flex items-center justify-center w-full gap-2 px-4 py-2 mt-4 text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+          >
+            <Download size={16} />
+            Attendance PDF
+          </button>
+          <button
+            onClick={handleGenerateDutiesPDF}
+            className="flex items-center justify-center w-full gap-2 px-4 py-2 mt-4 text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+          >
+            <Download size={16} />
+            Duties PDF
+          </button>
+        </div>
+      )}
 
       {/* Profile Info Edit Modal */}
       {modalOpen && (
