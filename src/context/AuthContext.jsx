@@ -30,6 +30,14 @@ export const AuthProvider = ({ children }) => {
       // Set the token on app load if it exists in localStorage
       setAuthToken(storedToken);
     }
+
+    // New: Listen for the token-expired event
+    window.addEventListener("token-expired", logout);
+
+    return () => {
+      // Clean up the event listener on unmount
+      window.removeEventListener("token-expired", logout);
+    };
   }, []);
 
   // Sync localStorage and the axios header whenever token changes

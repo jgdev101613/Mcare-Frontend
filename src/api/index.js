@@ -5,7 +5,6 @@
  * Full license terms available in LICENSE.md
  */
 
-import axios from "axios";
 import { axiosWrapper } from "./axiosWrapper";
 
 /** AUTH ENDPOINTS **/
@@ -44,6 +43,8 @@ export const passwordReset = (id) =>
   axiosWrapper.put(`api/auth/update/${id}/resetpassword`);
 export const fetchStudent = (id) =>
   axiosWrapper.get(`api/admin/students/fetchStudent/${id}`);
+export const verifyProfessor = (id) =>
+  axiosWrapper.put(`api/admin/professor/verify/${id}`);
 
 /** ADMIN/USER ENDPOINTS **/
 export const changePassword = (data, id) =>

@@ -20,6 +20,7 @@ import Members from "./pages/Members";
 import Group from "./pages/Group";
 import Attendance from "./pages/Attendance";
 import DashboardLayout from "./components/DashboardLayout";
+import ProfRegister from "./pages/ProfRegister";
 import { useAuth } from "./context/AuthContext";
 
 import { ToastContainer } from "react-toastify";
@@ -36,11 +37,43 @@ const App = () => {
         {/* Public */}
         <Route
           path="/login"
-          element={!user ? <Login /> : <Navigate to="/dashboard" />}
+          element={
+            !user ? (
+              <Login />
+            ) : (
+              <Navigate
+                to={
+                  user.role === "admin" || user.role === "professor"
+                    ? "/admin-dashboard"
+                    : "/dashboard"
+                }
+              />
+            )
+          }
         />
         <Route
           path="/register"
-          element={!user ? <Register /> : <Navigate to="/dashboard" />}
+          element={
+            !user ? (
+              <Register />
+            ) : (
+              <Navigate
+                to={user.role === "admin" ? "/admin-dashboard" : "/dashboard"}
+              />
+            )
+          }
+        />
+        <Route
+          path="/prof-register"
+          element={
+            !user ? (
+              <ProfRegister />
+            ) : (
+              <Navigate
+                to={user.role === "admin" ? "/admin-dashboard" : "/dashboard"}
+              />
+            )
+          }
         />
 
         {/* Protected */}
@@ -74,7 +107,7 @@ const App = () => {
             <Navigate
               to={
                 user
-                  ? user.role === "admin"
+                  ? user.role === "admin" || user.role === "professor"
                     ? "/admin-dashboard"
                     : "/dashboard"
                   : "/login"

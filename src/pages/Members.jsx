@@ -19,6 +19,7 @@ import {
   deleteStudent,
   passwordReset,
   updateStudentInformation,
+  verifyProfessor,
 } from "../api";
 
 const Members = () => {
@@ -28,6 +29,7 @@ const Members = () => {
   const [editingUser, setEditingUser] = useState(null);
   const [deletingUser, setDeletingUser] = useState(null);
   const [resettingUser, setResettingUser] = useState(null);
+  const [verifyUser, setVerifyUser] = useState(null);
   const [previewImage, setPreviewImage] = useState(null);
 
   // Debounce search input
@@ -68,6 +70,23 @@ const Members = () => {
   // search handler only updates state
   const handleSearch = (e) => {
     setSearch(e.target.value.toLowerCase());
+  };
+
+  // Verify A Professor
+  const handleVerification = async (id) => {
+    try {
+      const res = await verifyProfessor(id);
+      if (res.data.success) {
+        showSuccessToast("Professor verify successfully!");
+        setVerifyUser(null);
+        fetchMembers();
+      } else {
+        showErrorToast(res.data.message);
+      }
+    } catch (err) {
+      showErrorToast(err.response?.data.message);
+      console.error("Update error:", err.response?.data || err.message);
+    }
   };
 
   // update user
@@ -151,7 +170,7 @@ const Members = () => {
                 </p>
                 <p className="text-xs text-gray-400">Email: {user.email}</p>
                 <p className="text-xs text-gray-400">
-                  Role: {user.role === "user" ? "Student" : user.role}{" "}
+                  Role: {user.role === "user" ? "Student" : "Admin/Professor"}{" "}
                   {user.group ? `• Group: ${user.group.name}` : ""}
                 </p>
               </div>
@@ -170,6 +189,14 @@ const Members = () => {
               >
                 Reset Password
               </button>
+              {user.role === "professor" && (
+                <button
+                  onClick={() => setVerifyUser(user)}
+                  className="px-3 py-1 text-sm text-white bg-green-400 rounded-lg"
+                >
+                  Verify
+                </button>
+              )}
               <button
                 onClick={() => setDeletingUser(user)}
                 className="px-3 py-1 text-sm text-white bg-red-500 rounded-lg"
@@ -239,24 +266,28 @@ const Members = () => {
                 setEditingUser({ ...editingUser, name: e.target.value })
               }
             />
-            <p className="px-1 mb-2 text-sm text-gray-400">Section:</p>
-            <input
-              className="w-full p-2 mb-2 border rounded"
-              placeholder="Section"
-              value={editingUser.section || ""}
-              onChange={(e) =>
-                setEditingUser({ ...editingUser, section: e.target.value })
-              }
-            />
-            <p className="px-1 mb-2 text-sm text-gray-400">Course:</p>
-            <input
-              className="w-full p-2 mb-2 border rounded"
-              placeholder="Course"
-              value={editingUser.course || ""}
-              onChange={(e) =>
-                setEditingUser({ ...editingUser, course: e.target.value })
-              }
-            />
+            {editingUser.role === "user" && (
+              <>
+                <p className="px-1 mb-2 text-sm text-gray-400">Section:</p>
+                <input
+                  className="w-full p-2 mb-2 border rounded"
+                  placeholder="Section"
+                  value={editingUser.section || ""}
+                  onChange={(e) =>
+                    setEditingUser({ ...editingUser, section: e.target.value })
+                  }
+                />
+                <p className="px-1 mb-2 text-sm text-gray-400">Course:</p>
+                <input
+                  className="w-full p-2 mb-2 border rounded"
+                  placeholder="Course"
+                  value={editingUser.course || ""}
+                  onChange={(e) =>
+                    setEditingUser({ ...editingUser, course: e.target.value })
+                  }
+                />
+              </>
+            )}
             <p className="px-1 mb-2 text-sm text-gray-400">Department:</p>
             <input
               className="w-full p-2 mb-2 border rounded"
@@ -318,6 +349,33 @@ const Members = () => {
                 onClick={() => handleDelete(deletingUser._id)}
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {verifyUser && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="w-11/12 max-w-sm p-6 text-center bg-white rounded-lg">
+            <h2 className="mb-4 text-lg font-bold">Verify Professor</h2>
+            <p className="mb-6">
+              Are you sure you want to verify{" "}
+              <span className="font-semibold">{verifyUser.name}'s </span>
+              account?
+            </p>
+            <div className="flex justify-center space-x-3">
+              <button
+                className="px-4 py-2 bg-gray-300 rounded"
+                onClick={() => setVerifyUser(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 text-white bg-green-600 rounded"
+                onClick={() => handleVerification(verifyUser._id)}
+              >
+                Verify
               </button>
             </div>
           </div>
