@@ -22,7 +22,7 @@ export const adminFetchAllGroups = () =>
 export const searchGroup = (query) =>
   axiosWrapper.get(`api/admin/group/?search=${query}`);
 export const createGroup = (data) =>
-  axiosWrapper.put(`api/admin/group/create`, data);
+  axiosWrapper.post(`api/admin/group/create`, data);
 export const updateGroupName = (id, data) =>
   axiosWrapper.put(`api/admin/group/update/${id}`, data);
 export const addMembersToGroup = (id, data) =>

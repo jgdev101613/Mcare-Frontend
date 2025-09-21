@@ -171,8 +171,8 @@ const AdminDashboard = () => {
             showErrorToast(res.data.message);
           }
         } catch (error) {
-          showErrorToast(err.response?.data.message);
-          console.error("Edit error:", err.response?.data || err.message);
+          showErrorToast(error.response?.data.message);
+          console.error("Edit error:", error.response?.data || error.message);
         }
       }
       await fetchAllDuties();

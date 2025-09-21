@@ -9,6 +9,7 @@ import React, { useEffect, useState } from "react";
 
 // Utils
 import { useDebounce } from "../hooks/useDebounce";
+import { useAuth } from "../context/AuthContext";
 
 // Toast
 import { showSuccessToast, showErrorToast } from "../utils/toast";
@@ -20,9 +21,19 @@ import {
   passwordReset,
   updateStudentInformation,
   verifyProfessor,
+  fetchUserAttendance,
+  fetchUserDuties,
 } from "../api";
 
+// Icons
+import { Download } from "lucide-react";
+
+// PDF
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+
 const Members = () => {
+  const { user } = useAuth();
   const [members, setMembers] = useState([]);
   const [filtered, setFiltered] = useState([]);
   const [search, setSearch] = useState("");
@@ -31,6 +42,10 @@ const Members = () => {
   const [resettingUser, setResettingUser] = useState(null);
   const [verifyUser, setVerifyUser] = useState(null);
   const [previewImage, setPreviewImage] = useState(null);
+
+  // PDF
+  const [attendance, setAttendance] = useState([]);
+  const [duties, setDuties] = useState([]);
 
   // Debounce search input
   const debouncedSearch = useDebounce(search, 500);
@@ -138,6 +153,406 @@ const Members = () => {
     }
   };
 
+  const fetchAttendance = async (member) => {
+    try {
+      const { data } = await fetchUserAttendance(member.schoolId);
+      const records = data.records || [];
+      setAttendance(records);
+      handleGenerateAttendancePDF(records, member); // pass member
+    } catch (err) {
+      const message =
+        err.response?.data?.message ||
+        "Failed to fetch attendance. Please try again.";
+      showErrorToast(message);
+    }
+  };
+
+  const fetchDuties = async (member) => {
+    try {
+      const { data } = await fetchUserDuties(member._id);
+      const dutiesData = data.duties || [];
+      setDuties(dutiesData);
+      handleGenerateDutiesPDF(dutiesData, member); // pass member
+    } catch (err) {
+      const message =
+        err.response?.data?.message ||
+        "Failed to fetch duties. Please try again.";
+      console.error(message);
+    }
+  };
+
+  // Generate Attendance PDF
+  const handleGenerateAttendancePDF = async (recordsParam, member) => {
+    const records = recordsParam || attendance;
+    if (!records || records.length === 0) {
+      return showErrorToast("Student does not have attendance.");
+    }
+
+    // --- helper to load logo into a dataURL (avoids onload timing issues) ---
+    const loadImageAsDataURL = (url) =>
+      new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          try {
+            const canvas = document.createElement("canvas");
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0);
+            resolve(canvas.toDataURL("image/png"));
+          } catch (e) {
+            reject(e);
+          }
+        };
+        img.onerror = (e) => reject(e);
+        img.src = url;
+      });
+
+    // Attempt to load the logo; if it fails we just continue without logo
+    let logoDataUrl = null;
+    try {
+      logoDataUrl = await loadImageAsDataURL("/mcare.png");
+    } catch (err) {
+      // fallback: continue without logo
+      console.warn("Could not load logo for PDF watermark:", err);
+      logoDataUrl = null;
+    }
+
+    const doc = new jsPDF("p", "pt", "a4");
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = { top: 110, left: 40, right: 40, bottom: 60 };
+
+    // generated timestamp for footer (bottom-left)
+    const generatedAt = new Date().toLocaleString("en-PH", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+
+    // prepare table rows (index, formatted date, formatted time)
+    const tableColumn = ["#", "Date", "Time In"];
+    const tableRows = records.map((record, i) => {
+      const dateObj = new Date(record.date);
+      const formattedDate = dateObj.toLocaleDateString("en-PH", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+      // parse timeIn "HH:MM:SS"
+      const [h, m, s] = (record.timeIn || "00:00:00").split(":").map(Number);
+      const timeObj = new Date();
+      timeObj.setHours(h, m, s || 0);
+      const formattedTime = timeObj.toLocaleTimeString("en-PH", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+      return [i + 1, formattedDate, formattedTime];
+    });
+
+    // Generate table with header + repeated page hooks
+    autoTable(doc, {
+      head: [tableColumn],
+      body: tableRows,
+      margin,
+      styles: {
+        font: "helvetica",
+        fontSize: 10,
+        cellPadding: 6,
+        lineColor: [22, 163, 74], // green borders
+        lineWidth: 0.1,
+      },
+      headStyles: {
+        fillColor: [22, 163, 74], // green header
+        textColor: [255, 255, 255],
+        halign: "center",
+        valign: "middle",
+        fontSize: 12,
+        fontStyle: "bold",
+      },
+      bodyStyles: {
+        halign: "center",
+        valign: "middle",
+      },
+      alternateRowStyles: {
+        fillColor: [240, 253, 244], // light green row
+      },
+      // This is called for each page after table content - we draw header/footer/watermark here
+      didDrawPage: (data) => {
+        const pageNumber = data.pageNumber;
+
+        // --- faint logo watermark (center) ---
+        if (logoDataUrl) {
+          try {
+            doc.setGState(new doc.GState({ opacity: 0.06 }));
+            const imgW = 220;
+            const imgH = 220;
+            doc.addImage(
+              logoDataUrl,
+              "PNG",
+              (pageWidth - imgW) / 2,
+              (pageHeight - imgH) / 2,
+              imgW,
+              imgH,
+              undefined,
+              "FAST"
+            );
+            doc.setGState(new doc.GState({ opacity: 1 }));
+          } catch (e) {
+            // if setGState or addImage fails for some reason, ignore and continue
+            console.warn("logo watermark draw failed:", e);
+          }
+        }
+
+        // --- repeated watermark text (diagonal, faint) ---
+        try {
+          doc.setFontSize(48);
+          doc.setTextColor(150, 150, 150);
+          doc.setFont("helvetica", "bold");
+          doc.setGState(new doc.GState({ opacity: 0.06 }));
+          for (let y = 80; y < pageHeight; y += 180) {
+            for (let x = -50; x < pageWidth; x += 220) {
+              doc.text("MCare", x, y, { angle: 35 });
+            }
+          }
+          doc.setGState(new doc.GState({ opacity: 1 }));
+        } catch (e) {
+          // if GState isn't available in this environment, the watermark will still show lighter because of color
+          console.warn("watermark draw issue:", e);
+        }
+
+        // --- Header (on top so it's always readable) ---
+        doc.setFontSize(18);
+        doc.setTextColor(22, 163, 74);
+        doc.setFont("helvetica", "bold");
+        doc.text("Attendance Report", margin.left, 40);
+
+        doc.setFontSize(11);
+        doc.setTextColor(0, 0, 0);
+        doc.setFont("helvetica", "normal");
+        doc.text(`Name: ${member?.name || "Test User"}`, margin.left, 60);
+        doc.text(`School ID: ${member?.schoolId || "—"}`, margin.left, 76);
+
+        // --- Generated at (bottom-left) ---
+        doc.setFontSize(9);
+        doc.setTextColor(110);
+        doc.text(`Generated: ${generatedAt}`, margin.left, pageHeight - 30);
+
+        // --- Page number (bottom-right) ---
+        doc.text(
+          `Page ${pageNumber}`,
+          pageWidth - margin.right - 40,
+          pageHeight - 30
+        );
+      },
+    });
+
+    // finally save
+    doc.save(`${member?.username || "attendance"}_attendance.pdf`);
+  };
+
+  // Generate Duties PDF
+  const handleGenerateDutiesPDF = async (recordsParam, member) => {
+    const records = recordsParam || duties;
+    if (!records || records.length === 0) {
+      return showErrorToast("Student does not have duties.");
+    }
+
+    // helper to load logo
+    const loadImageAsDataURL = (url) =>
+      new Promise((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          try {
+            const canvas = document.createElement("canvas");
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0);
+            resolve(canvas.toDataURL("image/png"));
+          } catch (e) {
+            reject(e);
+          }
+        };
+        img.onerror = (e) => reject(e);
+        img.src = url;
+      });
+
+    let logoDataUrl = null;
+    try {
+      logoDataUrl = await loadImageAsDataURL("/mcare.png");
+    } catch (err) {
+      console.warn("Could not load logo for PDF watermark:", err);
+      logoDataUrl = null;
+    }
+
+    const doc = new jsPDF("p", "pt", "a4");
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = { top: 110, left: 40, right: 40, bottom: 60 };
+
+    // generated timestamp for footer
+    const generatedAt = new Date().toLocaleString("en-PH", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+
+    // Prepare table data
+    const tableColumn = [
+      "Date",
+      "Group",
+      "Time",
+      "Clinical Instructor",
+      "Place",
+      "Area",
+    ];
+    const tableRows = records.map((duty) => {
+      // Date
+      const dateObj = new Date(duty.date);
+      const formattedDate = dateObj.toLocaleDateString("en-PH", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+
+      // Time (format range if possible)
+      let formattedTime = duty.time || "—";
+      try {
+        if (formattedTime.includes("-")) {
+          const [start, end] = formattedTime.split("-").map((t) => t.trim());
+          const convertTo12Hour = (t) => {
+            const [h, m] = t.split(":").map(Number);
+            const d = new Date();
+            d.setHours(h, m, 0);
+            return d.toLocaleTimeString("en-PH", {
+              hour: "numeric",
+              minute: "2-digit",
+              hour12: true,
+            });
+          };
+          formattedTime = `${convertTo12Hour(start)} - ${convertTo12Hour(end)}`;
+        }
+      } catch (err) {
+        console.warn("Time parse failed:", err);
+      }
+
+      return [
+        formattedDate,
+        duty.group?.name || "—",
+        formattedTime,
+        duty.clinicalInstructor || "—",
+        duty.place || "—",
+        duty.area || "—",
+      ];
+    });
+
+    // Table with header/footer/watermark
+    autoTable(doc, {
+      head: [tableColumn],
+      body: tableRows,
+      margin,
+      styles: {
+        font: "helvetica",
+        fontSize: 10,
+        cellPadding: 6,
+        lineColor: [22, 163, 74],
+        lineWidth: 0.1,
+      },
+      headStyles: {
+        fillColor: [22, 163, 74],
+        textColor: [255, 255, 255],
+        halign: "center",
+        valign: "middle",
+        fontSize: 12,
+        fontStyle: "bold",
+      },
+      bodyStyles: {
+        halign: "center",
+        valign: "middle",
+      },
+      alternateRowStyles: {
+        fillColor: [240, 253, 244],
+      },
+      didDrawPage: (data) => {
+        const pageNumber = data.pageNumber;
+
+        // watermark logo
+        if (logoDataUrl) {
+          try {
+            doc.setGState(new doc.GState({ opacity: 0.06 }));
+            const imgW = 220;
+            const imgH = 220;
+            doc.addImage(
+              logoDataUrl,
+              "PNG",
+              (pageWidth - imgW) / 2,
+              (pageHeight - imgH) / 2,
+              imgW,
+              imgH,
+              undefined,
+              "FAST"
+            );
+            doc.setGState(new doc.GState({ opacity: 1 }));
+          } catch (e) {
+            console.warn("logo watermark draw failed:", e);
+          }
+        }
+
+        // repeated text watermark
+        try {
+          doc.setFontSize(48);
+          doc.setTextColor(150, 150, 150);
+          doc.setFont("helvetica", "bold");
+          doc.setGState(new doc.GState({ opacity: 0.06 }));
+          for (let y = 80; y < pageHeight; y += 180) {
+            for (let x = -50; x < pageWidth; x += 220) {
+              doc.text("MCare", x, y, { angle: 35 });
+            }
+          }
+          doc.setGState(new doc.GState({ opacity: 1 }));
+        } catch (e) {
+          console.warn("watermark draw issue:", e);
+        }
+
+        // Header
+        doc.setFontSize(18);
+        doc.setTextColor(22, 163, 74);
+        doc.setFont("helvetica", "bold");
+        doc.text("Duties Report", margin.left, 40);
+
+        doc.setFontSize(11);
+        doc.setTextColor(0, 0, 0);
+        doc.setFont("helvetica", "normal");
+        doc.text(`Name: ${member?.name || "Test User"}`, margin.left, 60);
+        doc.text(`School ID: ${member?.schoolId || "—"}`, margin.left, 76);
+
+        // Footer
+        doc.setFontSize(9);
+        doc.setTextColor(110);
+        doc.text(`Generated: ${generatedAt}`, margin.left, pageHeight - 30);
+
+        doc.text(
+          `Page ${pageNumber}`,
+          pageWidth - margin.right - 40,
+          pageHeight - 30
+        );
+      },
+    });
+
+    // Save PDF
+    doc.save(`${member?.username || "duties"}_duties.pdf`);
+  };
+
   return (
     <div className="p-4">
       {/* Search */}
@@ -150,7 +565,7 @@ const Members = () => {
       />
 
       {/* Members List */}
-      <div className="space-y-4">
+      <div className="flex flex-col space-y-4">
         {filtered.map((user) => (
           <div
             key={user._id}
@@ -176,7 +591,7 @@ const Members = () => {
               </div>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => setEditingUser(user)}
                 className="px-3 py-1 text-sm text-white bg-blue-500 rounded-lg"
@@ -197,6 +612,7 @@ const Members = () => {
                   Verify
                 </button>
               )}
+
               <button
                 onClick={() => setDeletingUser(user)}
                 className="px-3 py-1 text-sm text-white bg-red-500 rounded-lg"
@@ -204,6 +620,24 @@ const Members = () => {
                 Delete
               </button>
             </div>
+            {user.role === "user" && (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => fetchAttendance(user)}
+                  className="flex items-center justify-center w-full gap-2 px-4 py-1 text-sm text-white bg-green-600 rounded-lg hover:bg-green-700"
+                >
+                  <Download size={16} />
+                  Attendance
+                </button>
+                <button
+                  onClick={() => fetchDuties(user)}
+                  className="flex items-center justify-center w-full gap-2 px-4 py-1 text-sm text-white bg-green-600 rounded-lg hover:bg-green-700"
+                >
+                  <Download size={16} />
+                  Duties
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>
