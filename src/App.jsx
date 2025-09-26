@@ -27,7 +27,10 @@ import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
 const App = () => {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
+  if (loading) {
+    return <div>Loading...</div>; // or a spinner
+  }
 
   return (
     <Router>
